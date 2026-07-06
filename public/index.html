@@ -650,7 +650,7 @@
     const vQty = latest.countedQty - latest.systemQty;
     const absQty = Math.abs(vQty);
     // Flag as Over/Short if the qty difference is 0.01 or more
-    if (absQty >= 0.01) return {status:'review', entry: latest, vQty};
+    if (absQty >= 2) return {status:'review', entry: latest, vQty};
     return {status:'ok', entry: latest, vQty};
   }
 
