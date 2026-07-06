@@ -334,6 +334,46 @@
     border-radius:20px;
   }
 
+  /* ===== Admin PIN modal ===== */
+  .modal-overlay{
+    display:none; position:fixed; inset:0;
+    background:rgba(27,36,48,0.65); z-index:1000;
+    align-items:center; justify-content:center;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:32px 28px;
+    width:340px;
+    box-shadow:0 8px 40px rgba(0,0,0,0.22);
+    text-align:center;
+  }
+  .modal h2{
+    font-family:'Oswald', sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    font-size:18px;
+    margin:0 0 8px 0;
+  }
+  .modal p{ font-size:13px; color:var(--steel); margin:0 0 20px 0; }
+  .pin-input{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:28px;
+    letter-spacing:0.3em;
+    text-align:center;
+    width:100%;
+    padding:12px;
+    border:2px solid var(--line);
+    border-radius:8px;
+    margin-bottom:14px;
+    background:var(--paper);
+  }
+  .pin-input:focus{ outline:none; border-color:var(--amber); }
+  .modal-error{ color:var(--rust); font-size:12.5px; margin-bottom:10px; min-height:18px; }
+  .modal-btns{ display:flex; gap:10px; }
+  .modal-btns .btn{ flex:1; }
+
   footer{
     text-align:center;
     padding:18px;
@@ -368,7 +408,7 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn" data-view="items">Items</button>
+  <button class="tab-btn" data-view="items">Items 🔒</button>
   <button class="tab-btn active" data-view="entry">Count Entry</button>
   <button class="tab-btn" data-view="dashboard">Dashboard</button>
   <button class="tab-btn" data-view="history">History</button>
@@ -448,7 +488,8 @@
             <th>Category</th>
             <th class="num">System Qty</th>
             <th class="num">Counted Qty</th>
-            <th class="num">Variance</th>
+            <th class="num">Variance (Qty)</th>
+            <th class="num">Variance (%)</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -531,9 +572,10 @@
             <th>Date</th>
             <th>Item</th>
             <th>Counter</th>
-            <th class="num">System</th>
-            <th class="num">Counted</th>
-            <th class="num">Variance</th>
+            <th class="num">System Qty</th>
+            <th class="num">Counted Qty</th>
+            <th class="num">Variance (Qty)</th>
+            <th class="num">Variance (%)</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -544,6 +586,20 @@
   </section>
 
 </main>
+
+<!-- Admin PIN modal -->
+<div class="modal-overlay" id="adminModal">
+  <div class="modal">
+    <h2>Admin Access</h2>
+    <p>Enter the admin PIN to manage items.</p>
+    <input type="password" class="pin-input" id="pinInput" maxlength="6" placeholder="••••" inputmode="numeric">
+    <div class="modal-error" id="pinError"></div>
+    <div class="modal-btns">
+      <button class="btn" id="pinCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="pinConfirmBtn">Enter</button>
+    </div>
+  </div>
+</div>
 
 <footer>
   Tally runs entirely in this browser tab — data is not saved once you close it. Preloaded with a sample item list and 14 days of sample history so you can see it in action; upload your real Top 50 list from the Items tab whenever you're ready.
@@ -664,13 +720,55 @@
   // Poll for other counters' entries every 5s, but never mid-keystroke
   setInterval(()=>{ if (!isEditing) refreshAndRender(); }, 5000);
 
+  // ---------- Admin PIN ----------
+  const ADMIN_PIN = '1234'; // change this to your preferred PIN
+  let adminUnlocked = false;
+
+  function openPinModal(){
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinError').textContent = '';
+    document.getElementById('adminModal').classList.add('open');
+    setTimeout(()=>document.getElementById('pinInput').focus(), 50);
+  }
+  function closePinModal(){
+    document.getElementById('adminModal').classList.remove('open');
+  }
+  function tryPin(){
+    const entered = document.getElementById('pinInput').value;
+    if (entered === ADMIN_PIN){
+      adminUnlocked = true;
+      closePinModal();
+      // actually switch to items view now
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      document.querySelector('[data-view="items"]').classList.add('active');
+      document.getElementById('view-items').classList.add('active');
+      currentView = 'items';
+      renderItems('');
+    } else {
+      document.getElementById('pinError').textContent = 'Incorrect PIN. Try again.';
+      document.getElementById('pinInput').value = '';
+      document.getElementById('pinInput').focus();
+    }
+  }
+  document.getElementById('pinCancelBtn').addEventListener('click', closePinModal);
+  document.getElementById('pinConfirmBtn').addEventListener('click', tryPin);
+  document.getElementById('pinInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') tryPin(); });
+  document.getElementById('adminModal').addEventListener('click', (e)=>{ if(e.target===e.currentTarget) closePinModal(); });
+
   // ---------- Tabs ----------
   document.querySelectorAll('.tab-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
+      const target = btn.dataset.view;
+      // Items tab requires admin
+      if (target === 'items' && !adminUnlocked){
+        openPinModal();
+        return;
+      }
       document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
       document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
       btn.classList.add('active');
-      currentView = btn.dataset.view;
+      currentView = target;
       document.getElementById('view-'+currentView).classList.add('active');
       renderAllForCurrentView();
     });
@@ -694,6 +792,7 @@
         tr.dataset.status = status;
 
         const v = entry ? variancePct(entry.countedQty, entry.systemQty) : null;
+        const vQty = entry ? (entry.countedQty - entry.systemQty) : null;
 
         tr.innerHTML = `
           <td><span class="punch"></span></td>
@@ -708,6 +807,7 @@
           <td>${item.category}</td>
           <td class="num">${item.systemQty.toLocaleString()}</td>
           <td><input type="number" class="qty-input num" data-code="${item.code}" value="${entry ? entry.countedQty : ''}" placeholder="—"></td>
+          <td class="num" style="color:${vQty===null?'inherit':vQty===0?'var(--green)':vQty>0?'var(--amber)':'var(--rust)'}">${vQty!==null ? (vQty>0?'+':'')+vQty.toLocaleString() : '—'}</td>
           <td class="num">${v!==null ? fmtPct(v) : '—'}</td>
           <td><span class="status-pill status-${status}">${labelForStatus(status)}</span></td>
         `;
@@ -909,6 +1009,7 @@
       const item = itemByCode(e.itemCode);
       if (!item) return;
       const v = variancePct(e.countedQty, e.systemQty);
+      const vQty = e.countedQty - e.systemQty;
       const status = statusFor(e.date, e.itemCode).status;
       const tr = document.createElement('tr');
       tr.innerHTML = `
@@ -917,6 +1018,7 @@
         <td>${e.counter}</td>
         <td class="num">${e.systemQty.toLocaleString()}</td>
         <td class="num">${e.countedQty.toLocaleString()}</td>
+        <td class="num" style="color:${vQty===0?'var(--green)':vQty>0?'var(--amber)':'var(--rust)'}">${(vQty>0?'+':'')+vQty.toLocaleString()}</td>
         <td class="num">${fmtPct(v)}</td>
         <td><span class="status-pill status-${status}">${labelForStatus(status)}</span></td>
       `;
@@ -946,14 +1048,15 @@
     if (toF) rows = rows.filter(e=>e.date <= toF);
     if (statusF) rows = rows.filter(e=> statusFor(e.date, e.itemCode).status === statusF);
 
-    const header = ['Date','Item Code','Description','Counter','System Qty','Counted Qty','Variance %','Status'];
+    const header = ['Date','Item Code','Description','Counter','System Qty','Counted Qty','Variance (Qty)','Variance (%)','Status'];
     const lines = [header.join(',')];
     rows.forEach(e=>{
       const item = itemByCode(e.itemCode);
       if (!item) return;
-      const v = variancePct(e.countedQty, e.systemQty).toFixed(1);
+      const vQty = e.countedQty - e.systemQty;
+      const vPct = variancePct(e.countedQty, e.systemQty).toFixed(1);
       const status = labelForStatus(statusFor(e.date, e.itemCode).status);
-      lines.push([e.date, item.code, `"${item.desc}"`, e.counter, e.systemQty, e.countedQty, v, status].join(','));
+      lines.push([e.date, item.code, `"${item.desc}"`, e.counter, e.systemQty, e.countedQty, vQty, vPct, status].join(','));
     });
     const blob = new Blob([lines.join('\n')], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
