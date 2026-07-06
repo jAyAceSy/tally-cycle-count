@@ -648,8 +648,9 @@
     }
     const latest = entries[entries.length-1];
     const vQty = latest.countedQty - latest.systemQty;
-    const v = Math.abs(variancePct(latest.countedQty, latest.systemQty));
-    if (v > threshold) return {status:'review', entry: latest, vQty};
+    const absQty = Math.abs(vQty);
+    // Flag as Over/Short if the qty difference is 0.01 or more
+    if (absQty >= 0.01) return {status:'review', entry: latest, vQty};
     return {status:'ok', entry: latest, vQty};
   }
 
