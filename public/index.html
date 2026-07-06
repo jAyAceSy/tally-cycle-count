@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tally — Top 50 Cycle Count Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --ink:#1B2430;
+    --ink-2:#242F3D;
+    --paper:#F7F5F0;
+    --paper-2:#EFEBE2;
+    --card:#FFFFFF;
+    --steel:#5C6B7A;
+    --steel-light:#A9B4BE;
+    --line:#DAD4C8;
+    --amber:#E8A33D;
+    --amber-bg:#FBF0DC;
+    --rust:#C1502E;
+    --rust-bg:#F8E4DC;
+    --green:#4C7A5E;
+    --green-bg:#E4EEE7;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-family:'IBM Plex Mono', monospace;}
+  .wordmark{
+    font-family:'Oswald', sans-serif;
+    font-weight:700;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+  }
+
+  /* ===== Header ===== */
+  header{
+    background:var(--ink);
+    color:var(--paper);
+    padding:18px 28px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:14px;
+    border-bottom:4px solid var(--amber);
+  }
+  .brand{display:flex; align-items:baseline; gap:12px;}
+  .brand .wordmark{font-size:22px; color:var(--paper);}
+  .brand .tag{color:var(--steel-light); font-size:12.5px; letter-spacing:0.03em;}
+  .header-controls{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  .header-field{display:flex; flex-direction:column; gap:2px;}
+  .header-field label{font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--steel-light);}
+  .header-field input{
+    background:var(--ink-2);
+    border:1px solid #3A4656;
+    color:var(--paper);
+    padding:7px 10px;
+    border-radius:6px;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:13.5px;
+    min-width:160px;
+  }
+  .header-field input:focus{outline:2px solid var(--amber); outline-offset:1px;}
+  .date-chip{
+    font-family:'IBM Plex Mono', monospace;
+    background:var(--ink-2);
+    border:1px solid #3A4656;
+    padding:7px 12px;
+    border-radius:6px;
+    font-size:13px;
+    color:var(--paper);
+  }
+  .conn-chip{display:flex; align-items:center; gap:7px;}
+  .conn-chip::before{content:''; width:7px; height:7px; border-radius:50%; background:var(--steel-light);}
+  .conn-chip.conn-ok::before{background:var(--green);}
+  .conn-chip.conn-bad::before{background:var(--rust);}
+
+  /* ===== Tabs ===== */
+  .tabs{
+    display:flex;
+    gap:2px;
+    padding:0 28px;
+    background:var(--paper-2);
+    border-bottom:1px solid var(--line);
+  }
+  .tab-btn{
+    font-family:'Oswald', sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    font-size:13.5px;
+    font-weight:500;
+    background:none;
+    border:none;
+    padding:13px 18px;
+    color:var(--steel);
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  .tab-btn:hover{color:var(--ink);}
+  .tab-btn.active{color:var(--ink); border-bottom-color:var(--amber);}
+
+  main{padding:24px 28px 60px; max-width:1200px; margin:0 auto;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ===== Summary strip ===== */
+  .strip{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+  }
+  .strip-card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:14px 18px;
+    min-width:150px;
+    flex:1;
+  }
+  .strip-card .label{font-size:11px; text-transform:uppercase; letter-spacing:0.07em; color:var(--steel);}
+  .strip-card .value{font-family:'Oswald',sans-serif; font-size:30px; font-weight:600; margin-top:4px;}
+  .strip-card.flagged .value{color:var(--rust);}
+  .strip-card.ok .value{color:var(--green);}
+
+  /* ===== Table w/ punch-hole tag rows ===== */
+  .table-wrap{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  table{width:100%; border-collapse:collapse;}
+  thead th{
+    text-align:left;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--steel);
+    padding:10px 14px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-2);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:9px 14px;
+    border-bottom:1px solid var(--line);
+    font-size:13.5px;
+    vertical-align:middle;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#FBFAF7;}
+  .item-cell{display:flex; align-items:center; gap:10px;}
+  .punch{
+    width:14px; height:14px;
+    border-radius:50%;
+    background:var(--paper);
+    border:1.5px solid var(--line);
+    flex-shrink:0;
+    box-shadow: inset 0 0 0 2px var(--card);
+  }
+  .item-code{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--steel);}
+  .item-desc{font-weight:500;}
+  .qty-input{
+    width:90px;
+    padding:6px 8px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13.5px;
+  }
+  .qty-input:focus{outline:2px solid var(--amber); outline-offset:0; border-color:var(--amber);}
+  .status-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:3px 10px;
+    border-radius:20px;
+    font-size:11.5px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+  }
+  .status-pill::before{content:''; width:7px; height:7px; border-radius:50%;}
+  .status-pending{background:var(--paper-2); color:var(--steel);}
+  .status-pending::before{background:var(--steel-light);}
+  .status-ok{background:var(--green-bg); color:var(--green);}
+  .status-ok::before{background:var(--green);}
+  .status-review{background:var(--amber-bg); color:#8A5C1B;}
+  .status-review::before{background:var(--amber);}
+  .status-conflict{background:var(--rust-bg); color:var(--rust);}
+  .status-conflict::before{background:var(--rust);}
+  tr[data-status="review"]{border-left:3px solid var(--amber);}
+  tr[data-status="conflict"]{border-left:3px solid var(--rust);}
+  tr[data-status="ok"]{border-left:3px solid var(--green);}
+  tr[data-status="pending"]{border-left:3px solid transparent;}
+
+  .toolbar{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;}
+  .search-input{
+    padding:8px 12px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:13.5px;
+    min-width:220px;
+    background:var(--card);
+  }
+  .btn{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:13px;
+    font-weight:600;
+    padding:8px 14px;
+    border-radius:6px;
+    border:1px solid var(--line);
+    background:var(--card);
+    color:var(--ink);
+    cursor:pointer;
+    transition:background .15s ease, border-color .15s ease;
+  }
+  .btn:hover{background:var(--paper-2);}
+  .btn-primary{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .btn-primary:hover{background:var(--ink-2);}
+  .btn-ghost{border-color:transparent; color:var(--steel);}
+  .btn-ghost:hover{color:var(--ink); background:var(--paper-2);}
+
+  /* ===== Dashboard ===== */
+  .grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px;}
+  .stat-card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px 18px;
+  }
+  .stat-card .label{font-size:11px; text-transform:uppercase; letter-spacing:0.07em; color:var(--steel);}
+  .stat-card .value{font-family:'Oswald',sans-serif; font-size:34px; font-weight:600; margin-top:6px;}
+  .stat-card .sub{font-size:12px; color:var(--steel); margin-top:2px;}
+
+  .panel{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:20px;
+  }
+  .panel h3{
+    font-family:'Oswald', sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    font-size:14px;
+    margin:0 0 14px 0;
+    color:var(--ink);
+  }
+  .chart-wrap{height:260px; position:relative;}
+
+  .threshold-row{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--steel); margin-bottom:16px;}
+  .threshold-row input{
+    width:60px;
+    padding:5px 8px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-family:'IBM Plex Mono', monospace;
+  }
+
+  .empty-state{
+    text-align:center;
+    padding:36px 20px;
+    color:var(--steel);
+    font-size:13.5px;
+  }
+
+  .filters{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
+  .filters select, .filters input[type="date"]{
+    padding:7px 10px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:13px;
+    background:var(--card);
+  }
+
+  .upload-panel{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:16px;
+    padding:20px;
+    background:var(--card);
+    border:1.5px dashed var(--line);
+    border-radius:var(--radius);
+    margin-bottom:18px;
+  }
+  .upload-panel .copy h3{margin:0 0 4px 0; font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:0.04em; font-size:14px;}
+  .upload-panel .copy p{margin:0; font-size:12.5px; color:var(--steel); max-width:480px;}
+  .upload-actions{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+  .file-btn{
+    position:relative;
+    overflow:hidden;
+    display:inline-flex;
+  }
+  .file-btn input[type="file"]{
+    position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;
+  }
+  .upload-status{font-size:12.5px; margin-top:10px;}
+  .upload-status.success{color:var(--green);}
+  .upload-status.error{color:var(--rust);}
+  .editable-input{
+    width:100%;
+    border:1px solid transparent;
+    background:transparent;
+    padding:4px 6px;
+    border-radius:5px;
+    font-family:inherit;
+    font-size:13.5px;
+  }
+  .editable-input.num{font-family:'IBM Plex Mono', monospace;}
+  .editable-input:hover{border-color:var(--line);}
+  .editable-input:focus{outline:none; border-color:var(--amber); background:var(--amber-bg);}
+  .items-count-chip{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    color:var(--steel);
+    background:var(--paper-2);
+    padding:4px 10px;
+    border-radius:20px;
+  }
+
+  footer{
+    text-align:center;
+    padding:18px;
+    color:var(--steel);
+    font-size:12px;
+    border-top:1px solid var(--line);
+  }
+
+  @media (max-width:800px){
+    .grid-3{grid-template-columns:1fr;}
+    header{padding:14px 16px;}
+    main{padding:18px 16px 40px;}
+    .tabs{padding:0 16px; overflow-x:auto;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="wordmark">Tally</span>
+    <span class="tag">Top 50 Cycle Count Monitor</span>
+  </div>
+  <div class="header-controls">
+    <span class="date-chip conn-chip" id="connChip">Connecting…</span>
+    <span class="date-chip" id="todayChip"></span>
+    <div class="header-field">
+      <label for="counterName">Counter name</label>
+      <input type="text" id="counterName" placeholder="Your name" autocomplete="off">
+    </div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn" data-view="items">Items</button>
+  <button class="tab-btn active" data-view="entry">Count Entry</button>
+  <button class="tab-btn" data-view="dashboard">Dashboard</button>
+  <button class="tab-btn" data-view="history">History</button>
+</nav>
+
+<main>
+
+  <!-- ===================== ITEMS ===================== -->
+  <section class="view" id="view-items">
+    <div class="upload-panel">
+      <div class="copy">
+        <h3>Upload your item list</h3>
+        <p>CSV with columns: <strong>Item Code, Description, Category, System Qty</strong> (Category is optional). Uploading a new file replaces the current list and clears logged counts, since they're tied to the old system quantities.</p>
+      </div>
+      <div class="upload-actions">
+        <button class="btn" id="downloadTemplateBtn">Download CSV template</button>
+        <label class="btn btn-primary file-btn">
+          Upload CSV
+          <input type="file" id="csvUploadInput" accept=".csv">
+        </label>
+      </div>
+    </div>
+    <div id="uploadStatus" class="upload-status"></div>
+
+    <div class="toolbar">
+      <input type="text" class="search-input" id="itemsSearch" placeholder="Search item code or description…">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="items-count-chip" id="itemsCountChip">0 items</span>
+        <button class="btn" id="addItemBtn">+ Add item</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Item Code</th>
+            <th>Description</th>
+            <th>Category</th>
+            <th class="num">System Qty</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="itemsTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== COUNT ENTRY ===================== -->
+  <section class="view active" id="view-entry">
+    <div class="strip">
+      <div class="strip-card">
+        <div class="label">Counted Today</div>
+        <div class="value"><span id="statCountedToday">0</span><span class="num" style="font-size:16px;color:var(--steel);"> / <span id="statTotalItems">50</span></span></div>
+      </div>
+      <div class="strip-card ok">
+        <div class="label">In Tolerance</div>
+        <div class="value" id="statOkToday">0</div>
+      </div>
+      <div class="strip-card flagged">
+        <div class="label">Flagged Today</div>
+        <div class="value" id="statFlaggedToday">0</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" class="search-input" id="entrySearch" placeholder="Search item code or description…">
+      <button class="btn btn-ghost" id="clearTodayBtn">Clear my entries for today</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Item</th>
+            <th>Category</th>
+            <th class="num">System Qty</th>
+            <th class="num">Counted Qty</th>
+            <th class="num">Variance</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="entryTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== DASHBOARD ===================== -->
+  <section class="view" id="view-dashboard">
+    <div class="grid-3">
+      <div class="stat-card">
+        <div class="label">Accuracy Rate — Today</div>
+        <div class="value" id="dashAccuracy">—</div>
+        <div class="sub" id="dashAccuracySub">No counts logged yet</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Items Flagged — Today</div>
+        <div class="value" id="dashFlagged">0</div>
+        <div class="sub">Review + Conflict</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Progress — Today</div>
+        <div class="value" id="dashProgress">0 / 50</div>
+        <div class="sub">Items counted so far</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Accuracy trend — last 14 days</h3>
+      <div class="threshold-row">
+        Variance flag threshold:
+        <input type="number" id="thresholdInput" value="10" min="1" max="100"> %
+        <span style="color:var(--steel-light);">— counts beyond this are flagged for review</span>
+      </div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h3>Flagged items — today</h3>
+      <div class="table-wrap" id="flaggedWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Counter</th>
+              <th class="num">System</th>
+              <th class="num">Counted</th>
+              <th class="num">Variance</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="flaggedTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== HISTORY ===================== -->
+  <section class="view" id="view-history">
+    <div class="filters">
+      <select id="filterItem"><option value="">All items</option></select>
+      <select id="filterCounter"><option value="">All counters</option></select>
+      <select id="filterStatus">
+        <option value="">All statuses</option>
+        <option value="ok">OK</option>
+        <option value="review">Review</option>
+        <option value="conflict">Conflict</option>
+      </select>
+      <input type="date" id="filterFrom">
+      <input type="date" id="filterTo">
+      <button class="btn" id="resetFiltersBtn">Reset filters</button>
+      <button class="btn btn-primary" id="exportCsvBtn">Export CSV</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Item</th>
+            <th>Counter</th>
+            <th class="num">System</th>
+            <th class="num">Counted</th>
+            <th class="num">Variance</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody"></tbody>
+      </table>
+      <div class="empty-state" id="historyEmpty" style="display:none;">No count history matches these filters.</div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Tally runs entirely in this browser tab — data is not saved once you close it. Preloaded with a sample item list and 14 days of sample history so you can see it in action; upload your real Top 50 list from the Items tab whenever you're ready.
+</footer>
+
+<script>
+(function(){
+  const API_BASE = ''; // same-origin — this page is served by the same server as /api
+
+  let ITEMS = [];
+  let countLog = [];
+  let threshold = 10;
+  let currentView = 'entry';
+  let isEditing = false; // true while a counter is mid-keystroke, so polling doesn't clobber their typing
+
+  function todayStr(offsetDays){
+    const d = new Date();
+    d.setDate(d.getDate() + (offsetDays||0));
+    return d.toISOString().slice(0,10);
+  }
+  const TODAY = todayStr(0);
+
+  function itemByCode(c){ return ITEMS.find(i=>i.code===c); }
+
+  function variancePct(counted, system){
+    if (!system) return 0;
+    return ((counted - system) / system) * 100;
+  }
+
+  function entriesFor(date, itemCode){
+    return countLog.filter(e=>e.date===date && e.itemCode===itemCode);
+  }
+
+  function statusFor(date, itemCode){
+    const entries = entriesFor(date, itemCode);
+    if (entries.length === 0) return {status:'pending', entry:null};
+    const distinctCounters = [...new Set(entries.map(e=>e.counter))];
+    if (distinctCounters.length > 1){
+      const qtys = entries.map(e=>e.countedQty);
+      const item = itemByCode(itemCode);
+      const spreadPct = ((Math.max(...qtys) - Math.min(...qtys)) / (item ? item.systemQty || 1 : 1)) * 100;
+      if (spreadPct > threshold/2){
+        return {status:'conflict', entry: entries[entries.length-1]};
+      }
+    }
+    const latest = entries[entries.length-1];
+    const v = Math.abs(variancePct(latest.countedQty, latest.systemQty));
+    if (v > threshold) return {status:'review', entry: latest};
+    return {status:'ok', entry: latest};
+  }
+
+  function fmtPct(v){
+    const sign = v > 0 ? '+' : '';
+    return sign + v.toFixed(1) + '%';
+  }
+
+  function labelForStatus(s){
+    return {pending:'Pending', ok:'OK', review:'Review', conflict:'Conflict'}[s];
+  }
+
+  // ---------- API helpers ----------
+  async function apiGet(path){
+    const res = await fetch(API_BASE + path);
+    if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+    return res.json();
+  }
+  async function apiSend(path, method, body){
+    const res = await fetch(API_BASE + path, {
+      method,
+      headers: {'Content-Type':'application/json'},
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+    if (!res.ok){
+      const errBody = await res.json().catch(()=>({}));
+      throw new Error(errBody.error || ('Request failed (' + res.status + ')'));
+    }
+    return res.json();
+  }
+  async function apiDelete(path){
+    const res = await fetch(API_BASE + path, { method:'DELETE' });
+    if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+    return res.json();
+  }
+
+  function setConnStatus(ok){
+    const chip = document.getElementById('connChip');
+    chip.textContent = ok ? 'Connected — live' : 'Offline — retrying…';
+    chip.classList.toggle('conn-ok', ok);
+    chip.classList.toggle('conn-bad', !ok);
+  }
+
+  async function loadState(){
+    const data = await apiGet('/api/state');
+    ITEMS = data.items || [];
+    countLog = data.counts || [];
+    threshold = data.threshold || 10;
+    const thresholdInput = document.getElementById('thresholdInput');
+    if (document.activeElement !== thresholdInput) thresholdInput.value = threshold;
+  }
+
+  function renderAllForCurrentView(){
+    if (currentView === 'entry') renderEntryTable(document.getElementById('entrySearch').value);
+    if (currentView === 'dashboard') renderDashboard();
+    if (currentView === 'history') renderHistory();
+    if (currentView === 'items') renderItems(document.getElementById('itemsSearch').value);
+  }
+
+  async function refreshAndRender(){
+    try{
+      await loadState();
+      renderAllForCurrentView();
+      setConnStatus(true);
+    }catch(e){
+      setConnStatus(false);
+    }
+  }
+
+  // Poll for other counters' entries every 5s, but never mid-keystroke
+  setInterval(()=>{ if (!isEditing) refreshAndRender(); }, 5000);
+
+  // ---------- Tabs ----------
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      btn.classList.add('active');
+      currentView = btn.dataset.view;
+      document.getElementById('view-'+currentView).classList.add('active');
+      renderAllForCurrentView();
+    });
+  });
+
+  document.getElementById('todayChip').textContent = new Date().toLocaleDateString(undefined, {weekday:'short', year:'numeric', month:'short', day:'numeric'});
+
+  // ---------- Count Entry rendering ----------
+  const entryBody = document.getElementById('entryTableBody');
+  function renderEntryTable(filter){
+    filter = (filter||'').toLowerCase();
+    entryBody.innerHTML = '';
+    let counted=0, ok=0, flagged=0;
+
+    ITEMS.filter(it => !filter || it.code.toLowerCase().includes(filter) || it.desc.toLowerCase().includes(filter))
+      .forEach(item=>{
+        const {status, entry} = statusFor(TODAY, item.code);
+        if (status !== 'pending'){ counted++; if(status==='ok') ok++; else flagged++; }
+
+        const tr = document.createElement('tr');
+        tr.dataset.status = status;
+
+        const v = entry ? variancePct(entry.countedQty, entry.systemQty) : null;
+
+        tr.innerHTML = `
+          <td><span class="punch"></span></td>
+          <td>
+            <div class="item-cell">
+              <div>
+                <div class="item-desc">${item.desc}</div>
+                <div class="item-code">${item.code}</div>
+              </div>
+            </div>
+          </td>
+          <td>${item.category}</td>
+          <td class="num">${item.systemQty.toLocaleString()}</td>
+          <td><input type="number" class="qty-input num" data-code="${item.code}" value="${entry ? entry.countedQty : ''}" placeholder="—"></td>
+          <td class="num">${v!==null ? fmtPct(v) : '—'}</td>
+          <td><span class="status-pill status-${status}">${labelForStatus(status)}</span></td>
+        `;
+        entryBody.appendChild(tr);
+      });
+
+    document.getElementById('statCountedToday').textContent = counted;
+    document.getElementById('statTotalItems').textContent = ITEMS.length;
+    document.getElementById('statOkToday').textContent = ok;
+    document.getElementById('statFlaggedToday').textContent = flagged;
+
+    entryBody.querySelectorAll('.qty-input').forEach(inp=>{
+      inp.addEventListener('focus', ()=>{ isEditing = true; });
+      inp.addEventListener('blur', ()=>{ isEditing = false; });
+      inp.addEventListener('change', onQtyChange);
+    });
+  }
+
+  function currentCounterName(){
+    const v = document.getElementById('counterName').value.trim();
+    return v || 'Unnamed counter';
+  }
+
+  async function onQtyChange(e){
+    const code = e.target.dataset.code;
+    const val = parseFloat(e.target.value);
+    if (isNaN(val)) return;
+    const item = itemByCode(code);
+    const counter = currentCounterName();
+    try{
+      await apiSend('/api/counts', 'POST', {
+        date: TODAY, itemCode: code, counter,
+        countedQty: val, systemQty: item.systemQty
+      });
+      await refreshAndRender();
+    }catch(err){
+      alert('Could not save that count: ' + err.message);
+    }
+  }
+
+  document.getElementById('entrySearch').addEventListener('input', (e)=>renderEntryTable(e.target.value));
+  document.getElementById('counterName').addEventListener('change', ()=>renderEntryTable(document.getElementById('entrySearch').value));
+
+  document.getElementById('clearTodayBtn').addEventListener('click', async ()=>{
+    const counter = currentCounterName();
+    if (!confirm('Clear ' + counter + '\'s entries for today? This affects the shared data everyone sees.')) return;
+    try{
+      await apiDelete('/api/counts?date=' + encodeURIComponent(TODAY) + '&counter=' + encodeURIComponent(counter));
+      await refreshAndRender();
+    }catch(err){
+      alert('Could not clear entries: ' + err.message);
+    }
+  });
+
+  // ---------- Dashboard ----------
+  let trendChart = null;
+  function renderDashboard(){
+    const todaysEntries = countLog.filter(e=>e.date===TODAY);
+    const uniqueCodesToday = [...new Set(todaysEntries.map(e=>e.itemCode))];
+    let okCount=0, flaggedCount=0;
+    uniqueCodesToday.forEach(code=>{
+      const {status} = statusFor(TODAY, code);
+      if (status==='ok') okCount++;
+      else if (status==='review' || status==='conflict') flaggedCount++;
+    });
+    const counted = uniqueCodesToday.length;
+    document.getElementById('dashProgress').textContent = counted + ' / ' + ITEMS.length;
+    document.getElementById('dashFlagged').textContent = flaggedCount;
+
+    if (counted === 0){
+      document.getElementById('dashAccuracy').textContent = '—';
+      document.getElementById('dashAccuracySub').textContent = 'No counts logged yet';
+    } else {
+      const rate = Math.round((okCount/counted)*100);
+      document.getElementById('dashAccuracy').textContent = rate + '%';
+      document.getElementById('dashAccuracySub').textContent = okCount + ' of ' + counted + ' counted items in tolerance';
+    }
+
+    // 14-day trend, built from whatever real counts have accumulated so far
+    const days = [];
+    for(let i=-13;i<=0;i++) days.push(todayStr(i));
+    const rates = days.map(d=>{
+      const dayEntries = countLog.filter(e=>e.date===d);
+      const codes = [...new Set(dayEntries.map(e=>e.itemCode))];
+      if (codes.length===0) return null;
+      const ok = codes.filter(c=>statusFor(d,c).status==='ok').length;
+      return Math.round((ok/codes.length)*100);
+    });
+
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    const labels = days.map(d=>{
+      const dt = new Date(d+"T00:00:00");
+      return dt.toLocaleDateString(undefined,{month:'short', day:'numeric'});
+    });
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels,
+        datasets:[{
+          label:'Accuracy rate (%)',
+          data: rates,
+          borderColor:'#E8A33D',
+          backgroundColor:'rgba(232,163,61,0.12)',
+          borderWidth:2.5,
+          pointRadius:3,
+          pointBackgroundColor:'#1B2430',
+          tension:0.25,
+          fill:true,
+          spanGaps:true
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        scales:{
+          y:{min:0, max:100, ticks:{callback:v=>v+'%'}, grid:{color:'#EFEBE2'}},
+          x:{grid:{display:false}}
+        },
+        plugins:{legend:{display:false}}
+      }
+    });
+
+    // flagged table
+    const flaggedBody = document.getElementById('flaggedTableBody');
+    flaggedBody.innerHTML = '';
+    const flaggedRows = uniqueCodesToday
+      .map(code=>({code, ...statusFor(TODAY, code)}))
+      .filter(r=>r.status==='review' || r.status==='conflict');
+
+    if (flaggedRows.length===0){
+      flaggedBody.innerHTML = `<tr><td colspan="6" class="empty-state">No flagged items today.</td></tr>`;
+    } else {
+      flaggedRows.forEach(r=>{
+        const item = itemByCode(r.code);
+        const v = variancePct(r.entry.countedQty, r.entry.systemQty);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><div class="item-desc">${item.desc}</div><div class="item-code">${item.code}</div></td>
+          <td>${r.entry.counter}</td>
+          <td class="num">${r.entry.systemQty.toLocaleString()}</td>
+          <td class="num">${r.entry.countedQty.toLocaleString()}</td>
+          <td class="num">${fmtPct(v)}</td>
+          <td><span class="status-pill status-${r.status}">${labelForStatus(r.status)}</span></td>
+        `;
+        flaggedBody.appendChild(tr);
+      });
+    }
+  }
+
+  document.getElementById('thresholdInput').addEventListener('focus', ()=>{ isEditing = true; });
+  document.getElementById('thresholdInput').addEventListener('blur', ()=>{ isEditing = false; });
+  document.getElementById('thresholdInput').addEventListener('change', async (e)=>{
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v) && v>0){
+      try{
+        await apiSend('/api/threshold', 'PUT', {threshold:v});
+        await refreshAndRender();
+      }catch(err){ alert('Could not update threshold: ' + err.message); }
+    }
+  });
+
+  // ---------- History ----------
+  function populateFilterOptions(){
+    const itemSel = document.getElementById('filterItem');
+    const counterSel = document.getElementById('filterCounter');
+    const prevItem = itemSel.value, prevCounter = counterSel.value;
+    itemSel.innerHTML = '<option value="">All items</option>' + ITEMS.map(i=>`<option value="${i.code}">${i.code} — ${i.desc}</option>`).join('');
+    const counters = [...new Set(countLog.map(e=>e.counter))].sort();
+    counterSel.innerHTML = '<option value="">All counters</option>' + counters.map(c=>`<option value="${c}">${c}</option>`).join('');
+    itemSel.value = prevItem; counterSel.value = prevCounter;
+  }
+
+  function renderHistory(){
+    populateFilterOptions();
+    const itemF = document.getElementById('filterItem').value;
+    const counterF = document.getElementById('filterCounter').value;
+    const statusF = document.getElementById('filterStatus').value;
+    const fromF = document.getElementById('filterFrom').value;
+    const toF = document.getElementById('filterTo').value;
+
+    let rows = [...countLog].sort((a,b)=>b.ts - a.ts);
+    if (itemF) rows = rows.filter(e=>e.itemCode===itemF);
+    if (counterF) rows = rows.filter(e=>e.counter===counterF);
+    if (fromF) rows = rows.filter(e=>e.date >= fromF);
+    if (toF) rows = rows.filter(e=>e.date <= toF);
+    if (statusF) rows = rows.filter(e=> statusFor(e.date, e.itemCode).status === statusF);
+
+    const body = document.getElementById('historyTableBody');
+    const emptyEl = document.getElementById('historyEmpty');
+    body.innerHTML = '';
+
+    if (rows.length===0){
+      emptyEl.style.display='block';
+      return;
+    }
+    emptyEl.style.display='none';
+
+    rows.forEach(e=>{
+      const item = itemByCode(e.itemCode);
+      if (!item) return;
+      const v = variancePct(e.countedQty, e.systemQty);
+      const status = statusFor(e.date, e.itemCode).status;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="num">${e.date}</td>
+        <td><div class="item-desc">${item.desc}</div><div class="item-code">${item.code}</div></td>
+        <td>${e.counter}</td>
+        <td class="num">${e.systemQty.toLocaleString()}</td>
+        <td class="num">${e.countedQty.toLocaleString()}</td>
+        <td class="num">${fmtPct(v)}</td>
+        <td><span class="status-pill status-${status}">${labelForStatus(status)}</span></td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  ['filterItem','filterCounter','filterStatus','filterFrom','filterTo'].forEach(id=>{
+    document.getElementById(id).addEventListener('change', renderHistory);
+  });
+  document.getElementById('resetFiltersBtn').addEventListener('click', ()=>{
+    ['filterItem','filterCounter','filterStatus','filterFrom','filterTo'].forEach(id=>document.getElementById(id).value='');
+    renderHistory();
+  });
+
+  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{
+    const itemF = document.getElementById('filterItem').value;
+    const counterF = document.getElementById('filterCounter').value;
+    const statusF = document.getElementById('filterStatus').value;
+    const fromF = document.getElementById('filterFrom').value;
+    const toF = document.getElementById('filterTo').value;
+
+    let rows = [...countLog].sort((a,b)=>b.ts - a.ts);
+    if (itemF) rows = rows.filter(e=>e.itemCode===itemF);
+    if (counterF) rows = rows.filter(e=>e.counter===counterF);
+    if (fromF) rows = rows.filter(e=>e.date >= fromF);
+    if (toF) rows = rows.filter(e=>e.date <= toF);
+    if (statusF) rows = rows.filter(e=> statusFor(e.date, e.itemCode).status === statusF);
+
+    const header = ['Date','Item Code','Description','Counter','System Qty','Counted Qty','Variance %','Status'];
+    const lines = [header.join(',')];
+    rows.forEach(e=>{
+      const item = itemByCode(e.itemCode);
+      if (!item) return;
+      const v = variancePct(e.countedQty, e.systemQty).toFixed(1);
+      const status = labelForStatus(statusFor(e.date, e.itemCode).status);
+      lines.push([e.date, item.code, `"${item.desc}"`, e.counter, e.systemQty, e.countedQty, v, status].join(','));
+    });
+    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'cycle-count-history.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // ---------- Items management (upload / edit / add / delete) ----------
+  const itemsBody = document.getElementById('itemsTableBody');
+
+  function renderItems(filter){
+    filter = (filter||'').toLowerCase();
+    itemsBody.innerHTML = '';
+    document.getElementById('itemsCountChip').textContent = ITEMS.length + ' item' + (ITEMS.length===1?'':'s');
+
+    ITEMS.filter(it => !filter || it.code.toLowerCase().includes(filter) || it.desc.toLowerCase().includes(filter))
+      .forEach(item=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="item-code">${item.code}</td>
+          <td><input class="editable-input" data-field="desc" data-code="${item.code}" value="${item.desc.replace(/"/g,'&quot;')}"></td>
+          <td><input class="editable-input" data-field="category" data-code="${item.code}" value="${(item.category||'').replace(/"/g,'&quot;')}"></td>
+          <td><input class="editable-input num" data-field="systemQty" data-code="${item.code}" type="number" value="${item.systemQty}"></td>
+          <td><button class="btn btn-ghost" data-remove="${item.code}" title="Remove item">Remove</button></td>
+        `;
+        itemsBody.appendChild(tr);
+      });
+
+    itemsBody.querySelectorAll('.editable-input').forEach(inp=>{
+      inp.addEventListener('focus', ()=>{ isEditing = true; });
+      inp.addEventListener('blur', ()=>{ isEditing = false; });
+      inp.addEventListener('change', onItemFieldChange);
+    });
+    itemsBody.querySelectorAll('[data-remove]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const code = btn.dataset.remove;
+        if (!confirm('Remove ' + code + ' from the shared item list?')) return;
+        try{
+          await apiDelete('/api/items/' + encodeURIComponent(code));
+          await refreshAndRender();
+        }catch(err){ alert('Could not remove item: ' + err.message); }
+      });
+    });
+  }
+
+  async function onItemFieldChange(e){
+    const code = e.target.dataset.code;
+    const field = e.target.dataset.field;
+    const value = e.target.value;
+    try{
+      await apiSend('/api/items/' + encodeURIComponent(code), 'PATCH', { [field]: value });
+      await refreshAndRender();
+    }catch(err){
+      alert('Could not save that change: ' + err.message);
+    }
+  }
+
+  document.getElementById('itemsSearch').addEventListener('input', (e)=>renderItems(e.target.value));
+
+  document.getElementById('addItemBtn').addEventListener('click', async ()=>{
+    let n = 1;
+    while (ITEMS.some(i=>i.code === 'NEW-'+n)) n++;
+    try{
+      await apiSend('/api/items/add', 'POST', {code:'NEW-'+n, desc:'New item', category:'Uncategorized', systemQty:0});
+      await refreshAndRender();
+    }catch(err){ alert('Could not add item: ' + err.message); }
+  });
+
+  document.getElementById('downloadTemplateBtn').addEventListener('click', ()=>{
+    const header = ['Item Code','Description','Category','System Qty'];
+    const sample = [
+      ['SKU-1001','Hex Bolt M10x40','Fasteners','1200'],
+      ['SKU-1002','Flat Washer 10mm','Fasteners','3400']
+    ];
+    const lines = [header.join(','), ...sample.map(r=>r.join(','))];
+    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'top-50-item-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  function findField(row, candidates){
+    const keys = Object.keys(row);
+    for (const cand of candidates){
+      const match = keys.find(k=>k.trim().toLowerCase() === cand);
+      if (match) return row[match];
+    }
+    return undefined;
+  }
+
+  document.getElementById('csvUploadInput').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    const statusEl = document.getElementById('uploadStatus');
+    if (!file) return;
+
+    if (countLog.length > 0){
+      const proceed = confirm('Uploading a new item list clears all logged counts for everyone, since they reference the current system quantities. Continue?');
+      if (!proceed){ e.target.value = ''; return; }
+    }
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async function(results){
+        const rows = results.data;
+        const parsed = [];
+        let skipped = 0;
+
+        rows.forEach(row=>{
+          const code = findField(row, ['item code','sku','code','item']);
+          const desc = findField(row, ['description','desc','name','item description']);
+          const category = findField(row, ['category','type']);
+          const qtyRaw = findField(row, ['system qty','systemqty','qty','quantity','system quantity']);
+          const qty = parseFloat(qtyRaw);
+
+          if (!code || !desc || isNaN(qty)){ skipped++; return; }
+          parsed.push({
+            code: String(code).trim(),
+            desc: String(desc).trim(),
+            category: category ? String(category).trim() : 'Uncategorized',
+            systemQty: qty
+          });
+        });
+
+        if (parsed.length === 0){
+          statusEl.className = 'upload-status error';
+          statusEl.textContent = 'No valid rows found. Make sure your CSV has Item Code, Description, and System Qty columns.';
+          e.target.value = '';
+          return;
+        }
+
+        try{
+          await apiSend('/api/items', 'POST', { items: parsed });
+          await refreshAndRender();
+          statusEl.className = 'upload-status success';
+          statusEl.textContent = `Loaded ${parsed.length} item${parsed.length===1?'':'s'} for everyone` + (skipped ? `, skipped ${skipped} row${skipped===1?'':'s'} missing required fields.` : '.');
+        }catch(err){
+          statusEl.className = 'upload-status error';
+          statusEl.textContent = 'Upload failed: ' + err.message;
+        }
+        e.target.value = '';
+      },
+      error: function(err){
+        statusEl.className = 'upload-status error';
+        statusEl.textContent = 'Could not read that file: ' + err.message;
+        e.target.value = '';
+      }
+    });
+  });
+
+  // ---------- Init ----------
+  (async function init(){
+    await refreshAndRender();
+  })();
+})();
+</script>
+
+</body>
+</html>

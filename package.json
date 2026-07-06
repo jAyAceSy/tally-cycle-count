@@ -1,0 +1,16 @@
+{
+  "name": "tally-cycle-count-server",
+  "version": "1.0.0",
+  "description": "Shared backend for the Tally Top 50 Cycle Count Monitor.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
