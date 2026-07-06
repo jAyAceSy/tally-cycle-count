@@ -635,20 +635,22 @@
 
   function statusFor(date, itemCode){
     const entries = entriesFor(date, itemCode);
-    if (entries.length === 0) return {status:'pending', entry:null};
+    if (entries.length === 0) return {status:'pending', entry:null, vQty:null};
     const distinctCounters = [...new Set(entries.map(e=>e.counter))];
     if (distinctCounters.length > 1){
       const qtys = entries.map(e=>e.countedQty);
       const item = itemByCode(itemCode);
       const spreadPct = ((Math.max(...qtys) - Math.min(...qtys)) / (item ? item.systemQty || 1 : 1)) * 100;
       if (spreadPct > threshold/2){
-        return {status:'conflict', entry: entries[entries.length-1]};
+        const latest = entries[entries.length-1];
+        return {status:'conflict', entry: latest, vQty: latest.countedQty - latest.systemQty};
       }
     }
     const latest = entries[entries.length-1];
+    const vQty = latest.countedQty - latest.systemQty;
     const v = Math.abs(variancePct(latest.countedQty, latest.systemQty));
-    if (v > threshold) return {status:'review', entry: latest};
-    return {status:'ok', entry: latest};
+    if (v > threshold) return {status:'review', entry: latest, vQty};
+    return {status:'ok', entry: latest, vQty};
   }
 
   function fmtPct(v){
@@ -656,8 +658,17 @@
     return sign + v.toFixed(1) + '%';
   }
 
-  function labelForStatus(s){
-    return {pending:'Pending', ok:'OK', review:'Review', conflict:'Conflict'}[s];
+  function labelForStatus(s, vQty){
+    if (s === 'pending') return 'Pending';
+    if (s === 'conflict') return 'Conflict';
+    if (s === 'ok') return 'Recon';  // within threshold = reconciled
+    if (s === 'review'){
+      if (vQty === null || vQty === undefined) return 'Over/Short';
+      if (vQty > 0) return 'Over';
+      if (vQty < 0) return 'Short';
+      return 'Recon';
+    }
+    return s;
   }
 
   // ---------- API helpers ----------
@@ -809,7 +820,7 @@
           <td><input type="number" class="qty-input num" data-code="${item.code}" value="${entry ? entry.countedQty : ''}" placeholder="—"></td>
           <td class="num" style="color:${vQty===null?'inherit':vQty===0?'var(--green)':vQty>0?'var(--amber)':'var(--rust)'}">${vQty!==null ? (vQty>0?'+':'')+vQty.toLocaleString() : '—'}</td>
           <td class="num">${v!==null ? fmtPct(v) : '—'}</td>
-          <td><span class="status-pill status-${status}">${labelForStatus(status)}</span></td>
+          <td><span class="status-pill status-${status}">${labelForStatus(status, vQty)}</span></td>
         `;
         entryBody.appendChild(tr);
       });
@@ -943,6 +954,7 @@
       flaggedRows.forEach(r=>{
         const item = itemByCode(r.code);
         const v = variancePct(r.entry.countedQty, r.entry.systemQty);
+        const vQty = r.entry.countedQty - r.entry.systemQty;
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><div class="item-desc">${item.desc}</div><div class="item-code">${item.code}</div></td>
@@ -950,7 +962,7 @@
           <td class="num">${r.entry.systemQty.toLocaleString()}</td>
           <td class="num">${r.entry.countedQty.toLocaleString()}</td>
           <td class="num">${fmtPct(v)}</td>
-          <td><span class="status-pill status-${r.status}">${labelForStatus(r.status)}</span></td>
+          <td><span class="status-pill status-${r.status}">${labelForStatus(r.status, vQty)}</span></td>
         `;
         flaggedBody.appendChild(tr);
       });
@@ -1020,7 +1032,7 @@
         <td class="num">${e.countedQty.toLocaleString()}</td>
         <td class="num" style="color:${vQty===0?'var(--green)':vQty>0?'var(--amber)':'var(--rust)'}">${(vQty>0?'+':'')+vQty.toLocaleString()}</td>
         <td class="num">${fmtPct(v)}</td>
-        <td><span class="status-pill status-${status}">${labelForStatus(status)}</span></td>
+        <td><span class="status-pill status-${status}">${labelForStatus(status, vQty)}</span></td>
       `;
       body.appendChild(tr);
     });
@@ -1055,8 +1067,9 @@
       if (!item) return;
       const vQty = e.countedQty - e.systemQty;
       const vPct = variancePct(e.countedQty, e.systemQty).toFixed(1);
-      const status = labelForStatus(statusFor(e.date, e.itemCode).status);
-      lines.push([e.date, item.code, `"${item.desc}"`, e.counter, e.systemQty, e.countedQty, vQty, vPct, status].join(','));
+      const { status } = statusFor(e.date, e.itemCode);
+      const statusLabel = labelForStatus(status, vQty);
+      lines.push([e.date, item.code, `"${item.desc}"`, e.counter, e.systemQty, e.countedQty, vQty, vPct, statusLabel].join(','));
     });
     const blob = new Blob([lines.join('\n')], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
