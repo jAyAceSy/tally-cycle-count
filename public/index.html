@@ -497,13 +497,13 @@
   <section class="view" id="view-items">
     <div class="upload-panel">
       <div class="copy">
-        <h3>Upload your item list</h3>
-        <p>CSV with columns: <strong>Item Code, Description, Category, System Qty</strong> (Category is optional). Uploading a new file replaces the current list and clears logged counts, since they're tied to the old system quantities.</p>
+        <h3>Upload Daily System Inventory</h3>
+        <p>Upload a CSV with columns: <strong>Item Code, System Qty</strong>. This updates the system quantities for your permanent item list. Item codes not in the master list are ignored. Counts already logged today are not affected.</p>
       </div>
       <div class="upload-actions">
         <button class="btn" id="downloadTemplateBtn">Download CSV template</button>
         <label class="btn btn-primary file-btn">
-          Upload CSV
+          Upload System Qty CSV
           <input type="file" id="csvUploadInput" accept=".csv">
         </label>
       </div>
@@ -512,10 +512,7 @@
 
     <div class="toolbar">
       <input type="text" class="search-input" id="itemsSearch" placeholder="Search item code or description…">
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span class="items-count-chip" id="itemsCountChip">0 items</span>
-        <button class="btn" id="addItemBtn">+ Add item</button>
-      </div>
+      <span class="items-count-chip" id="itemsCountChip">0 items</span>
     </div>
 
     <div class="table-wrap">
@@ -524,9 +521,8 @@
           <tr>
             <th>Item Code</th>
             <th>Description</th>
-            <th>Category</th>
+            <th>Floor Area</th>
             <th class="num">System Qty</th>
-            <th></th>
           </tr>
         </thead>
         <tbody id="itemsTableBody"></tbody>
@@ -901,8 +897,8 @@
           <td>
             <div class="item-cell">
               <div>
-                <div class="item-desc">${item.desc}</div>
-                <div class="item-code">${item.code}</div>
+                <div class="item-code" style="font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:2px;">${item.code}</div>
+                <div class="item-desc" style="font-size:11.5px;font-weight:400;color:var(--steel);">${item.desc}</div>
               </div>
             </div>
           </td>
@@ -1042,7 +1038,7 @@
         const vQty = r.entry.countedQty - r.entry.systemQty;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><div class="item-desc">${item.desc}</div><div class="item-code">${item.code}</div></td>
+          <td><div class="item-code" style="font-size:13px;font-weight:600;">${item.code}</div><div style="font-size:11.5px;color:var(--steel);">${item.desc}</div></td>
           <td>${r.entry.counter}</td>
           <td class="num">${r.entry.systemQty.toLocaleString()}</td>
           <td class="num">${r.entry.countedQty.toLocaleString()}</td>
@@ -1111,7 +1107,7 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="num">${e.date}</td>
-        <td><div class="item-desc">${item.desc}</div><div class="item-code">${item.code}</div></td>
+        <td><div class="item-code" style="font-size:13px;font-weight:600;">${item.code}</div><div style="font-size:11.5px;color:var(--steel);">${item.desc}</div></td>
         <td>${e.counter}</td>
         <td class="num">${e.systemQty.toLocaleString()}</td>
         <td class="num">${e.countedQty.toLocaleString()}</td>
@@ -1164,7 +1160,7 @@
     URL.revokeObjectURL(url);
   });
 
-  // ---------- Items management (upload / edit / add / delete) ----------
+  // ---------- Items tab — read-only list + system qty upload ----------
   const itemsBody = document.getElementById('itemsTableBody');
 
   function renderItems(filter){
@@ -1176,11 +1172,10 @@
       .forEach(item=>{
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td class="item-code">${item.code}</td>
-          <td><input class="editable-input" data-field="desc" data-code="${item.code}" value="${item.desc.replace(/"/g,'&quot;')}"></td>
-          <td><input class="editable-input" data-field="category" data-code="${item.code}" value="${(item.category||'').replace(/"/g,'&quot;')}"></td>
-          <td><input class="editable-input num" data-field="systemQty" data-code="${item.code}" type="number" value="${item.systemQty}"></td>
-          <td><button class="btn btn-ghost" data-remove="${item.code}" title="Remove item">Remove</button></td>
+          <td><span class="item-code" style="font-size:13px;font-weight:600;">${item.code}</span></td>
+          <td style="font-size:13px;">${item.desc}</td>
+          <td style="font-size:13px;">${item.category}</td>
+          <td><input class="editable-input num" data-field="systemQty" data-code="${item.code}" type="number" value="${item.systemQty}" style="width:100px;"></td>
         `;
         itemsBody.appendChild(tr);
       });
@@ -1188,54 +1183,26 @@
     itemsBody.querySelectorAll('.editable-input').forEach(inp=>{
       inp.addEventListener('focus', ()=>{ isEditing = true; });
       inp.addEventListener('blur', ()=>{ isEditing = false; });
-      inp.addEventListener('change', onItemFieldChange);
-    });
-    itemsBody.querySelectorAll('[data-remove]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const code = btn.dataset.remove;
-        if (!confirm('Remove ' + code + ' from the shared item list?')) return;
+      inp.addEventListener('change', async (e)=>{
+        const code = e.target.dataset.code;
         try{
-          await apiDelete('/api/items/' + encodeURIComponent(code));
+          await apiSend('/api/items/' + encodeURIComponent(code), 'PATCH', { systemQty: e.target.value });
           await refreshAndRender();
-        }catch(err){ alert('Could not remove item: ' + err.message); }
+        }catch(err){ alert('Could not save: ' + err.message); }
       });
     });
   }
 
-  async function onItemFieldChange(e){
-    const code = e.target.dataset.code;
-    const field = e.target.dataset.field;
-    const value = e.target.value;
-    try{
-      await apiSend('/api/items/' + encodeURIComponent(code), 'PATCH', { [field]: value });
-      await refreshAndRender();
-    }catch(err){
-      alert('Could not save that change: ' + err.message);
-    }
-  }
-
   document.getElementById('itemsSearch').addEventListener('input', (e)=>renderItems(e.target.value));
 
-  document.getElementById('addItemBtn').addEventListener('click', async ()=>{
-    let n = 1;
-    while (ITEMS.some(i=>i.code === 'NEW-'+n)) n++;
-    try{
-      await apiSend('/api/items/add', 'POST', {code:'NEW-'+n, desc:'New item', category:'Uncategorized', systemQty:0});
-      await refreshAndRender();
-    }catch(err){ alert('Could not add item: ' + err.message); }
-  });
-
   document.getElementById('downloadTemplateBtn').addEventListener('click', ()=>{
-    const header = ['Item Code','Description','Category','System Qty'];
-    const sample = [
-      ['SKU-1001','Hex Bolt M10x40','Fasteners','1200'],
-      ['SKU-1002','Flat Washer 10mm','Fasteners','3400']
-    ];
-    const lines = [header.join(','), ...sample.map(r=>r.join(','))];
+    // Template matches the master item list — just Item Code and System Qty needed
+    const header = ['Item Code','System Qty'];
+    const lines = [header.join(','), ...ITEMS.map(i=>[i.code, i.systemQty].join(','))];
     const blob = new Blob([lines.join('\n')], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'top-50-item-template.csv';
+    a.href = url; a.download = 'system-qty-template.csv';
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -1254,47 +1221,35 @@
     const statusEl = document.getElementById('uploadStatus');
     if (!file) return;
 
-    if (countLog.length > 0){
-      const proceed = confirm('Uploading a new item list clears all logged counts for everyone, since they reference the current system quantities. Continue?');
-      if (!proceed){ e.target.value = ''; return; }
-    }
-
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: async function(results){
         const rows = results.data;
-        const parsed = [];
+        const updates = [];
         let skipped = 0;
 
         rows.forEach(row=>{
           const code = findField(row, ['item code','sku','code','item']);
-          const desc = findField(row, ['description','desc','name','item description']);
-          const category = findField(row, ['category','type']);
-          const qtyRaw = findField(row, ['system qty','systemqty','qty','quantity','system quantity']);
+          const qtyRaw = findField(row, ['system qty','systemqty','qty','quantity','system quantity','inventory qty','on hand']);
           const qty = parseFloat(qtyRaw);
-
-          if (!code || !desc || isNaN(qty)){ skipped++; return; }
-          parsed.push({
-            code: String(code).trim(),
-            desc: String(desc).trim(),
-            category: category ? String(category).trim() : 'Uncategorized',
-            systemQty: qty
-          });
+          if (!code || isNaN(qty)){ skipped++; return; }
+          updates.push({ code: String(code).trim(), systemQty: qty });
         });
 
-        if (parsed.length === 0){
+        if (updates.length === 0){
           statusEl.className = 'upload-status error';
-          statusEl.textContent = 'No valid rows found. Make sure your CSV has Item Code, Description, and System Qty columns.';
-          e.target.value = '';
-          return;
+          statusEl.textContent = 'No valid rows found. CSV must have Item Code and System Qty columns.';
+          e.target.value = ''; return;
         }
 
         try{
-          await apiSend('/api/items', 'POST', { items: parsed });
+          const result = await apiSend('/api/systemqty', 'POST', { updates });
           await refreshAndRender();
           statusEl.className = 'upload-status success';
-          statusEl.textContent = `Loaded ${parsed.length} item${parsed.length===1?'':'s'} for everyone` + (skipped ? `, skipped ${skipped} row${skipped===1?'':'s'} missing required fields.` : '.');
+          statusEl.textContent = `Updated ${result.updated} item${result.updated===1?'':'s'}.` +
+            (result.total - result.updated > 0 ? ` ${result.total - result.updated} code${result.total - result.updated===1?'':' codes'} not found in master list (skipped).` : '') +
+            (skipped ? ` ${skipped} row${skipped===1?'':' rows'} missing required fields (skipped).` : '');
         }catch(err){
           statusEl.className = 'upload-status error';
           statusEl.textContent = 'Upload failed: ' + err.message;
