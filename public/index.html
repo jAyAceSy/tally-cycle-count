@@ -735,8 +735,8 @@
     const latest = entries[entries.length-1];
     const vQty = latest.countedQty - latest.systemQty;
     const absQty = Math.abs(vQty);
-    // Flag as Over/Short if the qty difference is 2 or more
-    if (absQty >= 2) return {status:'review', entry: latest, vQty};
+    // Flag as Over/Short if the qty difference is more than 2
+    if (absQty > 2) return {status:'review', entry: latest, vQty};
     return {status:'ok', entry: latest, vQty};
   }
 
