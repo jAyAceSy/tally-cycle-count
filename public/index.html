@@ -682,6 +682,19 @@
   Tally runs entirely in this browser tab — data is not saved once you close it. Preloaded with a sample item list and 14 days of sample history so you can see it in action; upload your real Top 50 list from the Items tab whenever you're ready.
 </footer>
 
+<!-- Login screen -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <span class="wordmark">Tally</span>
+    <span class="tag">Top 50 Cycle Count Monitor</span>
+    <label for="loginNameInput">Your name</label>
+    <input type="text" class="login-name-input" id="loginNameInput" placeholder="e.g. Maria Santos" autocomplete="name" maxlength="60">
+    <div class="login-time" id="loginTimeDisplay"></div>
+    <div class="login-error" id="loginError"></div>
+    <button class="login-btn" id="loginBtn">Start Counting</button>
+  </div>
+</div>
+
 <script>
 (function(){
   const API_BASE = ''; // same-origin — this page is served by the same server as /api
@@ -1373,19 +1386,6 @@
   })();
 })();
 </script>
-
-<!-- Login screen -->
-<div class="login-screen" id="loginScreen">
-  <div class="login-box">
-    <span class="wordmark">Tally</span>
-    <span class="tag">Top 50 Cycle Count Monitor</span>
-    <label for="loginNameInput">Your name</label>
-    <input type="text" class="login-name-input" id="loginNameInput" placeholder="e.g. Maria Santos" autocomplete="name" maxlength="60">
-    <div class="login-time" id="loginTimeDisplay"></div>
-    <div class="login-error" id="loginError"></div>
-    <button class="login-btn" id="loginBtn">Start Counting</button>
-  </div>
-</div>
 
 </body>
 </html>
